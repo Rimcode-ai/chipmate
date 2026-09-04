@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+
+# Large files — download separately
+data/datasheets/*.pdf
+data/chunks/
+lambda_package/
+*.zip
+
+# Test outputs
+results/
+
+# Mac
+.DS_Store
+
+# IntelliJ
+.idea/
+*.iml
+
+# Python packaging artifacts
+*.egg-info/
+dist/
+build/

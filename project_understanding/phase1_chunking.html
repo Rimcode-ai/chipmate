@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 1 — Chunking | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  h3 { color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 20px 0 8px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; }
+  .box.rec { border-color: #16a34a; }
+  .box h4 { font-size: 0.85rem; margin-bottom: 8px; }
+  .box h4 span { font-family: monospace; color: #4ade80; }
+  .box.rec h4 span { color: #4ade80; }
+  .box ul { padding-left: 16px; font-size: 0.8rem; color: #94a3b8; }
+  .box ul li { margin-bottom: 4px; }
+  .box .tag { font-size: 0.7rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px; }
+  .box.rec .tag { border-color: #16a34a; color: #4ade80; }
+  code { background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px; font-size: 0.82rem; color: #fbbf24; font-family: monospace; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 1 — Structure-Aware PDF Chunking</h1>
+</header>
+<div class="container">
+
+  <h2>Why Chunking Matters</h2>
+  <p>The retrieval quality of a RAG system is bounded by chunking quality. A chunk that splits a table across two pieces means a query for "max voltage" might get row 1 (the header) from one chunk and row 2 (the value) from another — neither chunk is useful alone.</p>
+  <p>Datasheets have explicit sections: <em>Electrical Characteristics</em>, <em>Pin Description</em>, <em>Absolute Maximum Ratings</em>. Splitting on these headers keeps related data together.</p>
+
+  <h2>Three Approaches Compared</h2>
+  <div class="compare">
+    <div class="box rec">
+      <h4><span>ingest.py</span> <span class="tag">USED IN PIPELINE</span></h4>
+      <ul>
+        <li>Split on all-caps section header lines (regex)</li>
+        <li>Tables extracted as single chunks via pdfplumber</li>
+        <li>Every chunk tagged: component, section, page</li>
+        <li>Best for: structured technical documents</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4><span style="color:#fbbf24;">ingest_alternative1.py</span></h4>
+      <ul>
+        <li>Fixed token windows (default 300 tokens)</li>
+        <li>N-token overlap between adjacent chunks</li>
+        <li>No section awareness, page info lost</li>
+        <li>Best for: unstructured prose documents</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4><span style="color:#fbbf24;">ingest_alternative2.py</span></h4>
+      <ul>
+        <li>NLTK sentence tokenizer groups N sentences</li>
+        <li>Preserves page number of first sentence</li>
+        <li>Misfires on unit abbreviations (3.3V., 2A.)</li>
+        <li>Best for: research papers, narrative text</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>How ingest.py Works (Key Code)</h2>
+  <pre>HEADER_RE = re.compile(r'^[A-Z][A-Z0-9\s\-/]{3,}$')
+
+def is_section_header(line: str) -> bool:
+    return bool(HEADER_RE.match(line.strip()))
+
+# When we hit a header line AND there's a buffer, flush the buffer as a chunk
+if is_section_header(stripped) and buffer:
+    text = " ".join(buffer).strip()
+    if len(text) >= MIN_CHUNK_CHARS:
+        chunks.append({"text": text, "section": current_section, "page": page_num})
+    current_section = stripped
+    buffer = []</pre>
+
+  <h2>Each Chunk's Shape</h2>
+  <pre>{
+  "chunk_id":    "TPS62902_p003_c012",
+  "component":   "TPS62902",
+  "section":     "ELECTRICAL CHARACTERISTICS",
+  "page":        3,
+  "text":        "Input Voltage Range (VIN) ...",
+  "source_file": "TPS62902.pdf"
+}</pre>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "I implemented structure-aware chunking. I split on section headers detected by a regex on all-caps lines, and I extracted tables as single chunks using pdfplumber's extract_tables() so table rows don't split across chunk boundaries. Every chunk is tagged with component name, section name, and page number."
+  </div>
+
+  <h2>Run Commands</h2>
+  <div class="cmd">cd chipmate</div>
+  <div class="cmd">python -m local.ingest --input data/datasheets/TPS62902.pdf</div>
+  <div class="cmd">python -m local.ingest --input data/datasheets/ --output data/chunks</div>
+  <div class="cmd"># Compare alternatives side by side:</div>
+  <div class="cmd">python -m local.ingest_alternative1 --input data/datasheets/TPS62902.pdf</div>
+  <div class="cmd">python -m local.ingest_alternative2 --input data/datasheets/TPS62902.pdf</div>
+  <div class="cmd"># Inspect output:</div>
+  <div class="cmd">cat data/chunks/TPS62902.json | python -m json.tool | head -80</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 3 — Graph | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; }
+  .box.rec { border-color: #16a34a; }
+  .box h4 { font-size: 0.85rem; margin-bottom: 8px; font-family: monospace; color: #4ade80; }
+  .box ul { padding-left: 16px; font-size: 0.8rem; color: #94a3b8; }
+  .box ul li { margin-bottom: 4px; }
+  .warn { background: #431407; border: 1px solid #ef4444; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #fca5a5; margin: 20px 0; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 3 — Component Relationship Graph</h1>
+</header>
+<div class="container">
+
+  <h2>Why Graph vs Vector for Relationships</h2>
+  <p>"What replaces the TPS62902?" is a <strong>structural fact</strong>, not a semantic similarity question. The answer is stored as an explicit edge in a graph. A vector search might accidentally find the TPS62903 datasheet if its text mentions TPS62902, but that is coincidence — not a reliable structural answer.</p>
+  <p>Graph traversal is O(hops) — very fast. Vector search for "what replaces X" would require the model to extract the replacement from prose, which is unreliable and slow.</p>
+
+  <h2>Data Model</h2>
+  <pre>Nodes:   (:Component {name, type, vendor})
+Edges:   -[:REPLACED_BY]->
+         -[:PIN_COMPATIBLE]->
+         -[:FUNCTIONALLY_SIMILAR]->
+
+Example:
+  (TPS62902) -[:REPLACED_BY]-&gt; (TPS62903)
+  (LM358)    -[:PIN_COMPATIBLE]-&gt; (TLV2372)
+  (LM358)    -[:REPLACED_BY]-&gt; (TLV2372)</pre>
+
+  <h2>Cypher vs Gremlin — Same Query</h2>
+  <div class="compare">
+    <div class="box rec">
+      <h4>graph.py — Cypher (local Neo4j)</h4>
+      <pre style="margin:0;font-size:0.75rem;">MATCH (a:Component {name: 'TPS62902'})
+      -[:REPLACED_BY]->(b)
+RETURN b.name</pre>
+    </div>
+    <div class="box">
+      <h4>graph_alternative1.py — Gremlin</h4>
+      <pre style="margin:0;font-size:0.75rem;">g.V()
+ .has('component','name','TPS62902')
+ .out('REPLACED_BY')
+ .values('name')</pre>
+    </div>
+  </div>
+  <p>Both return the same result. Cypher is more readable. Gremlin is required for Neptune (AWS). The <code>graph.py</code> and <code>aws/graph_neptune.py</code> expose the same Python interface (<code>find_replacements()</code>, <code>find_pin_compatible()</code>) — callers don't know which language ran underneath.</p>
+
+  <h2>Gremlin MERGE Pattern (important for Neptune)</h2>
+  <pre># Gremlin doesn't have MERGE like Cypher.
+# The coalesce pattern achieves the same thing (create if not exists):
+g.V().has('component','name', name)
+ .fold()
+ .coalesce(
+     unfold(),                          # return existing if found
+     addV('component').property('name', name)  # create if not found
+ )</pre>
+
+  <h2>Multi-hop Traversal</h2>
+  <pre># Cypher — find components within 2 hops:
+MATCH path = (a {name: 'TPS62902'})-[*1..2]->(b)
+RETURN b.name, type(last(relationships(path))) AS rel, length(path) AS hops
+
+# Gremlin equivalent:
+g.V().has('name','TPS62902').repeat(out()).times(2).values('name').dedup()</pre>
+
+  <div class="warn">
+    <strong>AWS Neptune cost warning:</strong> Neptune has no free tier. The smallest instance (db.t3.medium) costs ~$0.10-0.20/hr. Create it, run your tests, delete it the same session. See PLAN.md for the exact delete commands.
+  </div>
+
+  <h2>Run Commands</h2>
+  <div class="cmd">python -m local.graph --load        # load test data</div>
+  <div class="cmd">python -m local.graph --query TPS62902</div>
+  <div class="cmd">python -m local.graph --all-nodes    # list all nodes</div>
+  <div class="cmd"># Neo4j browser: http://localhost:7474 (login: neo4j / chipmate)</div>
+  <div class="cmd"># Cypher in browser: MATCH (n) RETURN n LIMIT 25</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "Component relationships live in a graph. 'What replaces X?' is a structural fact — I follow the REPLACED_BY edge. I used Cypher locally (Neo4j) and Gremlin on Neptune, but both expose the same Python interface. The router sends relationship queries to the graph agent, not to the vector retrieval agent."
+  </div>
+
+</div>
+</body>
+</html>

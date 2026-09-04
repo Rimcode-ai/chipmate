@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 9 — Load Test | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  .warn { background: #431407; border: 1px solid #ef4444; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #fca5a5; margin: 20px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 16px 0; }
+  th { background: #1e293b; color: #94a3b8; padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 9 — Load Testing</h1>
+</header>
+<div class="container">
+
+  <h2>Key Metrics to Record</h2>
+  <table>
+    <tr><th>Metric</th><th>What it means</th><th>How to find it in Locust</th></tr>
+    <tr><td>RPS</td><td>Requests per second at peak load</td><td>Locust terminal: "Requests/s" column</td></tr>
+    <tr><td>Median latency</td><td>50th percentile — typical user experience</td><td>50%ile column</td></tr>
+    <tr><td>p95 latency</td><td>95% of requests finish in this time or less</td><td>95%ile column</td></tr>
+    <tr><td>Failure rate</td><td>% of requests returning non-2xx</td><td>"Failures/s" / "Requests/s"</td></tr>
+  </table>
+
+  <h2>Expected Bottleneck</h2>
+  <pre>Local (Ollama CPU):
+  Ollama inference: ~2-5s per query on M-series Mac, ~10-30s on Intel
+  Retrieval + DB:   ~100-200ms
+  API overhead:     ~5ms
+  → Bottleneck: LLM inference
+  → RPS will be low (0.5-2 req/sec per user)
+
+AWS (Bedrock + Aurora Serverless):
+  Bedrock Haiku:    ~0.5-1.5s per query (GPU inference)
+  Aurora cold:      ~200-500ms (Serverless v2 cold start)
+  Aurora warm:      ~20-50ms
+  → Bottleneck: Bedrock inference (still, but faster)
+  → RPS better (~2-5 req/sec per user)</pre>
+
+  <h2>Locust Task Weights</h2>
+  <pre>@task(7)   # 70% of traffic: spec queries (most common)
+def spec_query(self): ...
+
+@task(3)   # 30% of traffic: relationship queries
+def relationship_query(self): ...
+
+@task(1)   # occasional health checks
+def health_check(self): ...</pre>
+
+  <h2>Run Commands (Local)</h2>
+  <div class="cmd"># Make sure the API is running:</div>
+  <div class="cmd">uvicorn local.main:app --port 8000</div>
+  <div class="cmd"># In another terminal:</div>
+  <div class="cmd">mkdir -p results</div>
+  <div class="cmd">locust -f locustfile.py \
+  --host http://localhost:8000 \
+  --users 20 --spawn-rate 5 \
+  --run-time 2m --headless \
+  --csv results/load_test_local</div>
+  <div class="cmd">cat results/load_test_local_stats.csv</div>
+
+  <div class="warn">
+    <strong>AWS cost warning:</strong> Each Locust request to API Gateway calls Bedrock. Keep --users 10 and --run-time 2m maximum. ~120 Bedrock calls at Haiku rates = ~$0.01-0.02. Check Cost Explorer after.
+  </div>
+
+  <h2>Run Commands (AWS)</h2>
+  <div class="cmd">locust -f aws/locustfile_aws.py \
+  --host https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com \
+  --users 10 --spawn-rate 2 \
+  --run-time 2m --headless \
+  --csv results/load_test_aws</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "I ran a load test with Locust. Local numbers: X req/sec, Y ms median, Z ms p95. AWS Bedrock numbers: [your numbers]. The bottleneck in both cases is LLM inference — retrieval and API layers add under 200ms total. I can show you the CSV output."
+  </div>
+
+</div>
+</body>
+</html>

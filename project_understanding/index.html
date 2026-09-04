@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChipMate — Project Understanding</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 24px 40px; }
+  header h1 { font-size: 1.5rem; color: #f8fafc; }
+  header p { color: #94a3b8; margin-top: 4px; font-size: 0.9rem; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px; }
+  .phase-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 32px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 24px; text-decoration: none; color: inherit; display: block; transition: border-color 0.15s, transform 0.15s; }
+  .card:hover { border-color: #3b82f6; transform: translateY(-2px); }
+  .card .phase-tag { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #3b82f6; margin-bottom: 8px; }
+  .card h3 { font-size: 1rem; color: #f8fafc; margin-bottom: 8px; }
+  .card p { font-size: 0.85rem; color: #94a3b8; }
+  .card .files { margin-top: 12px; font-size: 0.75rem; color: #64748b; font-family: monospace; }
+  .tag { display: inline-block; background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px; margin: 2px 2px 0 0; }
+  .tag.rec { border-color: #16a34a; color: #4ade80; }
+  .tag.alt { border-color: #f59e0b; color: #fbbf24; }
+  h2 { color: #94a3b8; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; }
+  .arch { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 24px; margin-top: 24px; }
+  .arch pre { color: #94a3b8; font-size: 0.82rem; overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ChipMate — Project Understanding</h1>
+  <p>Living reference for all design decisions, trade-offs, and implementation patterns. Updated as phases complete.</p>
+</header>
+<div class="container">
+  <h2>Architecture</h2>
+  <div class="arch">
+<pre>
+User Query
+    │
+    ▼
+[Router]  ← deterministic regex (no LLM call)
+    │
+    ├── spec_lookup ──→ [Retrieval]  pgvector + tsvector + RRF  ──┐
+    │                                                               │
+    └── relationship ──→ [Graph]    Neo4j Cypher / Neptune Gremlin ─┤
+                                                                    │
+                                                            [Analysis]  Ollama / Bedrock
+                                                                    │
+                                                            [Grounding]  regex extraction + source check
+                                                                    │
+                                            confidence >= 0.6 ─→ [END: Return answer]
+                                            confidence < 0.6  ─→ [Human Approval] ─→ [END]
+</pre>
+  </div>
+
+  <h2 style="margin-top: 32px;">Phases</h2>
+  <div class="phase-grid">
+    <a href="phase1_chunking.html" class="card">
+      <div class="phase-tag">Phase 1</div>
+      <h3>Structure-Aware PDF Chunking</h3>
+      <p>Split on section headers, keep tables intact, tag metadata.</p>
+      <div class="files">
+        <span class="tag rec">ingest.py</span>
+        <span class="tag alt">ingest_alternative1.py</span>
+        <span class="tag alt">ingest_alternative2.py</span>
+      </div>
+    </a>
+    <a href="phase2_hybrid_search.html" class="card">
+      <div class="phase-tag">Phase 2</div>
+      <h3>Hybrid Search (Vector + BM25 + RRF)</h3>
+      <p>pgvector cosine + Postgres FTS, fused with Reciprocal Rank Fusion.</p>
+      <div class="files">
+        <span class="tag rec">retrieve.py</span>
+        <span class="tag alt">retrieve_alternative1.py</span>
+        <span class="tag alt">retrieve_alternative2.py</span>
+        <span class="tag rec">embed.py</span>
+        <span class="tag alt">embed_alternative1.py</span>
+      </div>
+    </a>
+    <a href="phase3_graph.html" class="card">
+      <div class="phase-tag">Phase 3</div>
+      <h3>Component Relationship Graph</h3>
+      <p>Neo4j Cypher locally. Neptune Gremlin on AWS. Same interface, different backend.</p>
+      <div class="files">
+        <span class="tag rec">graph.py</span>
+        <span class="tag alt">graph_alternative1.py</span>
+        <span class="tag rec">aws/graph_neptune.py</span>
+      </div>
+    </a>
+    <a href="phase4_langgraph.html" class="card">
+      <div class="phase-tag">Phase 4</div>
+      <h3>LangGraph Multi-Agent</h3>
+      <p>StateGraph with conditional routing. Deterministic router, provider-agnostic LLM call.</p>
+      <div class="files">
+        <span class="tag rec">agent.py</span>
+        <span class="tag alt">agent_alternative1.py</span>
+        <span class="tag rec">aws/agent_aws.py</span>
+      </div>
+    </a>
+    <a href="phase5_eval.html" class="card">
+      <div class="phase-tag">Phase 5</div>
+      <h3>Deterministic Evaluation</h3>
+      <p>Regex extraction from answers verified against retrieved source text.</p>
+      <div class="files">
+        <span class="tag rec">eval.py</span>
+        <span class="tag alt">eval_alternative1.py</span>
+        <span class="tag">golden_dataset.json</span>
+      </div>
+    </a>
+    <a href="phase6_api.html" class="card">
+      <div class="phase-tag">Phase 6</div>
+      <h3>FastAPI + Redis Rate Limiting</h3>
+      <p>Sliding window rate limiter. MD5-key semantic cache. Async endpoint.</p>
+      <div class="files">
+        <span class="tag rec">main.py</span>
+        <span class="tag alt">main_alternative1.py</span>
+        <span class="tag rec">aws/lambda_api.py</span>
+      </div>
+    </a>
+    <a href="phase7_circuit_breaker.html" class="card">
+      <div class="phase-tag">Phase 7</div>
+      <h3>Circuit Breaker</h3>
+      <p>pybreaker wraps the LLM call. Three states: CLOSED, OPEN, HALF_OPEN.</p>
+      <div class="files">
+        <span class="tag rec">resilience.py</span>
+        <span class="tag alt">resilience_alternative1.py</span>
+        <span class="tag rec">aws/resilience_aws.py</span>
+      </div>
+    </a>
+    <a href="phase8_tracing.html" class="card">
+      <div class="phase-tag">Phase 8</div>
+      <h3>Observability</h3>
+      <p>Langfuse locally. X-Ray + CloudWatch on AWS. One span per agent node.</p>
+      <div class="files">
+        <span class="tag rec">tracing.py</span>
+        <span class="tag alt">tracing_alternative1.py</span>
+        <span class="tag rec">aws/tracing_aws.py</span>
+      </div>
+    </a>
+    <a href="phase9_load_test.html" class="card">
+      <div class="phase-tag">Phase 9</div>
+      <h3>Load Testing</h3>
+      <p>Locust with mixed task weights. Record RPS, p95 latency, failure rate.</p>
+      <div class="files">
+        <span class="tag rec">locustfile.py</span>
+        <span class="tag rec">aws/locustfile_aws.py</span>
+      </div>
+    </a>
+  </div>
+</div>
+</body>
+</html>

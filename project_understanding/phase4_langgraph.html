@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 4 — LangGraph | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 16px 0; }
+  th { background: #1e293b; color: #94a3b8; padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1; font-family: monospace; font-size: 0.8rem; }
+  tr:nth-child(even) { background: #1e293b44; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 4 — LangGraph Multi-Agent</h1>
+</header>
+<div class="container">
+
+  <h2>State Machine Overview</h2>
+  <pre>Entry: router_node
+    │
+    ├── intent == "relationship_lookup" ──→ graph_node
+    │
+    └── everything else ──────────────────→ retrieval_node
+                                                  │
+                                    ┌─────────────┘
+                                    ▼
+                              analysis_node   ← only node that calls LLM
+                                    │
+                              grounding_node  ← regex check, sets confidence
+                                    │
+                    confidence >= 0.6 ──→ END
+                    confidence < 0.6  ──→ human_approval_node ──→ END</pre>
+
+  <h2>State Shape</h2>
+  <pre>class AgentState(TypedDict):
+    query: str               # input: the user question
+    intent: str              # set by router: spec_lookup | relationship_lookup | general
+    retrieved_chunks: list   # set by retrieval_node
+    graph_results: list      # set by graph_node (component names)
+    context: str             # combined text passed to the LLM
+    answer: str              # set by analysis_node
+    confidence: float        # set by grounding_node (0.0 - 1.0)
+    grounding_passed: bool   # True if confidence >= threshold
+    requires_human_review: bool
+    human_decision: str      # approve | escalate</pre>
+
+  <h2>How LangGraph Nodes Work</h2>
+  <p>Each node function receives the full state dict and returns a PARTIAL dict of only the keys it updated. LangGraph merges the return into the state — you don't need to copy the whole state forward.</p>
+  <pre># Node function signature:
+def router_node(state: AgentState) -> dict:
+    intent = classify(state["query"])
+    return {"intent": intent}   # only return what changed
+
+# NOT this:
+def router_node_wrong(state):
+    state["intent"] = classify(state["query"])
+    return state   # returning full state also works but is unnecessary</pre>
+
+  <h2>Conditional Edges</h2>
+  <pre>def route_after_router(state: AgentState) -> str:
+    return "graph_search" if state["intent"] == "relationship_lookup" else "retrieval"
+
+graph.add_conditional_edges(
+    "router",            # from node
+    route_after_router,  # routing function returns a string key
+    {
+        "retrieval":    "retrieval",    # key -> next node
+        "graph_search": "graph_search",
+    }
+)</pre>
+
+  <h2>LangGraph vs Plain Pipeline (alternative1)</h2>
+  <table>
+    <tr><th>Feature</th><th>LangGraph (agent.py)</th><th>Plain pipeline (alternative1)</th></tr>
+    <tr><td>Conditional routing</td><td>add_conditional_edges</td><td>if/else in run_pipeline()</td></tr>
+    <tr><td>State shape</td><td>TypedDict — explicit</td><td>dataclass — mutable</td></tr>
+    <tr><td>Human-in-the-loop</td><td>interrupt_before= param</td><td>manual input() call</td></tr>
+    <tr><td>Visualization</td><td>graph.get_graph().draw_png()</td><td>none</td></tr>
+    <tr><td>Debugging</td><td>framework wrapping</td><td>add print() anywhere</td></tr>
+    <tr><td>Checkpointing</td><td>built-in with MemorySaver</td><td>must implement yourself</td></tr>
+  </table>
+
+  <h2>Provider-Agnostic Design</h2>
+  <p>The only function that touches the LLM is <code>call_llm_with_fallback()</code> in <code>resilience.py</code>. The LangGraph graph structure, the router, the grounding check — none of that changes between the local (Ollama) and AWS (Bedrock) versions.</p>
+
+  <h2>Run Commands</h2>
+  <div class="cmd">python -m local.agent --query "What is the voltage of TPS62902?"</div>
+  <div class="cmd">python -m local.agent --query "What replaces TPS62902?"</div>
+  <div class="cmd">python -m local.agent --query "Does TPS62902 support power save mode?"</div>
+  <div class="cmd">python -m local.agent_alternative1 --query "What is the voltage of TPS62902?"</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "My router is deterministic — it uses regex patterns to classify intent, not an LLM call. That keeps routing latency under 1ms and makes routing decisions auditable. The LangGraph state machine handles branching; only the analysis node calls the LLM. Swapping Ollama for Bedrock touches one function."
+  </div>
+
+</div>
+</body>
+</html>

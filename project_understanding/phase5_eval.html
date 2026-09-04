@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 5 — Evaluation | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; }
+  .box.rec { border-color: #16a34a; }
+  .box h4 { font-size: 0.85rem; margin-bottom: 8px; font-family: monospace; color: #4ade80; }
+  .box ul { padding-left: 16px; font-size: 0.8rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 5 — Deterministic Evaluation</h1>
+</header>
+<div class="container">
+
+  <h2>The Core Idea</h2>
+  <p>The LLM can confidently state a wrong answer. Confidence is not correctness. The grounding check in the agent (and the eval harness) verifies factual claims by extracting numeric values from the answer with regex and checking if those values appear in the retrieved source text.</p>
+  <pre>Answer:  "The TPS62902 operates at 3.3V"
+Source:  "Input Voltage Range ... 3V to 17V"
+
+Regex extracts: ("3.3", "v") from answer
+Checks: does "3.3 v" appear in source text? → NO → FAIL (grounding gap)
+
+Correct answer: The source says 3V–17V, not specifically 3.3V.
+An LLM hallucinated a specific value from a range.</pre>
+
+  <h2>Two Eval Approaches</h2>
+  <div class="compare">
+    <div class="box rec">
+      <h4>eval.py — Regex grounding (USED)</h4>
+      <ul>
+        <li>Extract (value, unit) pairs from the answer</li>
+        <li>Check each against the source context text</li>
+        <li>Deterministic: same input → same verdict always</li>
+        <li>Fast: no LLM call during eval</li>
+        <li>Limited: can't evaluate fluency or completeness</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4>eval_alternative1.py — LLM-as-judge</h4>
+      <ul>
+        <li>Send question + expected + actual to LLM</li>
+        <li>LLM scores 1-5 with justification</li>
+        <li>Non-deterministic: can vary between runs</li>
+        <li>Captures quality dimensions regex misses</li>
+        <li>Use as complement, not replacement</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Golden Dataset Format</h2>
+  <pre>{
+  "id": "tc-001",
+  "query": "What is the input voltage range of TPS62902?",
+  "intent": "spec_lookup",
+  "expected_value": "3",
+  "expected_unit": "V",
+  "expected_source_contains": "Input Voltage"
+}
+
+{
+  "id": "tc-002",
+  "query": "What replaces the TPS62902?",
+  "intent": "relationship_lookup",
+  "expected_graph_result": ["TPS62903"]
+}</pre>
+
+  <h2>Accuracy Scoring</h2>
+  <pre>PASS:    full credit (1.0)
+PARTIAL: half credit (0.5) — value found but unit missing, or some expected parts found
+FAIL:    no credit (0.0)
+SKIP:    excluded from denominator
+
+Accuracy = (PASS + 0.5 * PARTIAL) / (total - SKIP)</pre>
+
+  <h2>Run Commands</h2>
+  <div class="cmd">python -m local.eval --dataset golden_dataset.json</div>
+  <div class="cmd">python -m local.eval --dataset golden_dataset.json --verbose</div>
+  <div class="cmd">python -m local.eval_alternative1 --dataset golden_dataset.json</div>
+  <div class="cmd"># Compare both scores — note where they disagree</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "My evaluation is deterministic — I extract claimed values with regex and compare them against the retrieved source text. This is infrastructure-agnostic: the same eval script works against Ollama locally and Bedrock on AWS. An LLM judge adds non-determinism to the evaluation layer, which makes the eval less reliable than the system being evaluated."
+  </div>
+
+</div>
+</body>
+</html>

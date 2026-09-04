@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 6 — API | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; }
+  .box.rec { border-color: #16a34a; }
+  .box h4 { font-size: 0.85rem; margin-bottom: 8px; font-family: monospace; }
+  .box h4.green { color: #4ade80; }
+  .box ul { padding-left: 16px; font-size: 0.8rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 6 — FastAPI + Redis</h1>
+</header>
+<div class="container">
+
+  <h2>Rate Limiting: Sliding Window</h2>
+  <pre>Why sliding window over fixed window?
+
+Fixed window: 10 requests/60s, resets at :00
+  A client sends 10 at :59 and 10 at :01 → 20 requests in 2 seconds.
+
+Sliding window: the 60-second window moves with each request
+  Always at most 10 requests in any 60-second window.
+
+Redis sorted set algorithm:
+  1. ZREMRANGEBYSCORE key 0 (now - 60s)  ← remove old entries
+  2. ZADD key now now                     ← add current request
+  3. ZCARD key                            ← count in window
+  4. EXPIRE key 60                        ← auto-cleanup
+  5. If count > 10: return 429</pre>
+
+  <h2>Semantic Caching</h2>
+  <pre>Cache key: MD5(query.lower()) → 32-char hex string
+TTL: 5 minutes (300 seconds)
+Store: Redis SETEX key 300 json_value
+
+Why MD5 over embedding similarity:
+  Embedding similarity requires an embedding call to look up the cache (50-200ms overhead).
+  MD5 is instantaneous and works for exact/near-exact repeated queries.
+  For a demo system, exact-match caching is sufficient and more explainable.</pre>
+
+  <h2>Redis vs In-Memory</h2>
+  <div class="compare">
+    <div class="box rec">
+      <h4 class="green">main.py — Redis (USED)</h4>
+      <ul>
+        <li>Survives process restart</li>
+        <li>Shared across multiple workers</li>
+        <li>Redis sorted sets for sliding window</li>
+        <li>Requires Docker (redis container)</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4>main_alternative1.py — In-memory</h4>
+      <ul>
+        <li>No Redis dependency</li>
+        <li>Counter resets on restart</li>
+        <li>Not shared across workers (bypasses limit at scale)</li>
+        <li>Good for understanding the algorithm</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Run + Test Commands</h2>
+  <div class="cmd">uvicorn local.main:app --reload --port 8000</div>
+  <div class="cmd"># Happy path:</div>
+  <div class="cmd">curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the voltage of TPS62902?"}'</div>
+  <div class="cmd"># Rate limit (fire 11 requests, 11th returns 429):</div>
+  <div class="cmd">for i in $(seq 1 11); do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -X POST http://localhost:8000/query \
+    -H "Content-Type: application/json" \
+    -d '{"query": "test"}';
+done</div>
+  <div class="cmd"># Cache test (run same query twice, second is faster):</div>
+  <div class="cmd">time curl -X POST http://localhost:8000/query \
+  -d '{"query": "What is the voltage of TPS62902?"}' \
+  -H "Content-Type: application/json"</div>
+  <div class="cmd"># Health check:</div>
+  <div class="cmd">curl http://localhost:8000/health</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "I implemented a sliding window rate limiter in Redis using sorted sets. The fixed window has a burst problem at the boundary — sliding window doesn't. For caching I used MD5 keying instead of embedding similarity because the lookup is instant and doesn't add latency to a cache hit."
+  </div>
+
+</div>
+</body>
+</html>

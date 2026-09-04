@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 8 — Tracing | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 16px 0; }
+  th { background: #1e293b; color: #94a3b8; padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 8 — Observability</h1>
+</header>
+<div class="container">
+
+  <h2>What a Trace Shows</h2>
+  <pre>Query: "What is the voltage of TPS62902?"
+
+Trace (total: 3.2s)
+  └── router_node          12ms    intent=spec_lookup
+  └── retrieval_node       180ms   chunks=5, model=nomic-embed-text
+  └── analysis_node        2800ms  model=mistral:7b, method=primary
+  └── grounding_node       8ms     confidence=0.85, passed=true</pre>
+  <p>The bottleneck is visible: Ollama inference (2.8s). Retrieval is fast (180ms including embedding). This is the kind of data you need to answer "where is the latency?" in an interview.</p>
+
+  <h2>Langfuse vs OpenTelemetry</h2>
+  <table>
+    <tr><th>Feature</th><th>Langfuse (tracing.py)</th><th>OpenTelemetry (tracing_alternative1.py)</th></tr>
+    <tr><td>LLM-specific concepts</td><td>Prompt, completion, token count, cost</td><td>Manual span attributes</td></tr>
+    <tr><td>LangChain integration</td><td>One CallbackHandler import</td><td>Wrap each node manually</td></tr>
+    <tr><td>Backend</td><td>Langfuse UI (self-hosted or cloud)</td><td>Jaeger, Zipkin, Datadog, X-Ray</td></tr>
+    <tr><td>Portability</td><td>Langfuse-specific</td><td>Vendor-neutral standard</td></tr>
+    <tr><td>AWS equivalent</td><td>X-Ray (aws/tracing_aws.py)</td><td>OTLPSpanExporter to X-Ray</td></tr>
+  </table>
+
+  <h2>Langfuse Usage (one line)</h2>
+  <pre>from local.tracing import trace_query
+
+result = trace_query(query="What is the voltage of TPS62902?", app=app, initial_state=state)
+# → prints trace URL: http://localhost:3000/traces/abc123</pre>
+
+  <h2>X-Ray on AWS</h2>
+  <pre>from aws_xray_sdk.core import patch_all
+patch_all()  # auto-instruments all boto3 calls (Bedrock, DynamoDB, S3)
+
+# Custom subsegment per node:
+with xray_recorder.in_subsegment("analysis_node") as seg:
+    seg.put_annotation("model", "claude-3-haiku")
+    answer = call_bedrock(prompt, context)</pre>
+
+  <h2>Enable X-Ray on Lambda</h2>
+  <div class="cmd">aws lambda update-function-configuration \
+  --function-name chipmate-api \
+  --tracing-config Mode=Active</div>
+  <div class="cmd"># View traces: AWS Console > X-Ray > Service Map</div>
+
+  <h2>Run Commands (Local)</h2>
+  <div class="cmd"># Start Langfuse: docker compose up -d langfuse</div>
+  <div class="cmd"># Open http://localhost:3000 — create account, add keys to .env</div>
+  <div class="cmd">python -m local.agent --query "What is the voltage of TPS62902?"</div>
+  <div class="cmd"># Open Langfuse UI > Traces — verify trace with all spans appears</div>
+  <div class="cmd">python -m local.tracing_alternative1  # runs OTel console demo</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "I traced every agent step — router, retrieval, analysis, grounding — as a separate span. Locally I used Langfuse because it understands LLM concepts natively (prompt, completion, cost). On AWS I used X-Ray, which Amazon uses internally, with patch_all() to auto-instrument boto3. Both show the same breakdown: my latency bottleneck is LLM inference, not retrieval."
+  </div>
+
+</div>
+</body>
+</html>

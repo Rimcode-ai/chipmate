@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 2 — Hybrid Search | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; }
+  .box.rec { border-color: #16a34a; }
+  .box h4 { font-size: 0.85rem; margin-bottom: 8px; font-family: monospace; color: #4ade80; }
+  .box ul { padding-left: 16px; font-size: 0.8rem; color: #94a3b8; }
+  .box ul li { margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 16px 0; }
+  th { background: #1e293b; color: #94a3b8; padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+  tr:nth-child(even) { background: #1e293b44; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 2 — Hybrid Search</h1>
+</header>
+<div class="container">
+
+  <h2>Why Hybrid Search</h2>
+  <p>Vector search alone fails on exact-match queries. "TPS62902 input voltage" — the exact phrase "input voltage" might not have high cosine similarity to "what is the operating voltage of TPS62902?" if the datasheet uses different phrasing. Keyword search (BM25/FTS) catches exact token matches.</p>
+  <p>Neither alone is best. Hybrid combines both and uses <strong>Reciprocal Rank Fusion (RRF)</strong> to merge the two ranked lists.</p>
+
+  <h2>Reciprocal Rank Fusion Formula</h2>
+  <pre>RRF(d) = Σ  1 / (k + rank_i(d))
+          i
+
+Where:
+  k = 60  (standard smoothing constant — reduces the weight of top ranks)
+  rank_i = rank of document d in ranker i (1 = best)
+  Σ sums over all rankers (vector search + keyword search)
+
+A document appearing in rank 1 of both lists scores: 1/(60+1) + 1/(60+1) = 0.0328
+A document in rank 1 of one list only scores:        1/(60+1)             = 0.0164</pre>
+
+  <h2>Why RRF over weighted sum (0.7*vector + 0.3*bm25)</h2>
+  <p>Cosine similarity returns values in [0, 1]. BM25 returns unbounded positive floats. You can't add them directly — 0.8 cosine + 12.4 BM25 is meaningless. RRF only uses ranks, so scale differences don't matter.</p>
+
+  <h2>Three BM25 Options</h2>
+  <div class="compare">
+    <div class="box rec">
+      <h4>retrieve.py — tsvector (USED)</h4>
+      <ul>
+        <li>Built into every Postgres install</li>
+        <li>GIN index for fast lookup</li>
+        <li>plainto_tsquery converts plain text</li>
+        <li>Not true BM25 — uses tf-idf variant</li>
+        <li>Sufficient for our 10-20 doc corpus</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4>retrieve_alternative1.py — rank_bm25</h4>
+      <ul>
+        <li>True BM25Okapi in Python</li>
+        <li>Loads ALL chunks into memory (O(n))</li>
+        <li>No extra DB extension needed</li>
+        <li>Slow at scale (>100k chunks)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="compare">
+    <div class="box">
+      <h4>retrieve_alternative2.py — pg_bm25 (ParadeDB)</h4>
+      <ul>
+        <li>True BM25 inside Postgres</li>
+        <li>Requires paradedb/paradedb Docker image</li>
+        <li>@@@ operator and paradedb.score()</li>
+        <li>Production-grade but non-standard extension</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h4>embed_alternative1.py — sentence-transformers</h4>
+      <ul>
+        <li>In-process model (no Ollama needed)</li>
+        <li>all-mpnet-base-v2: same 768 dims</li>
+        <li>Native batch_size support</li>
+        <li>Loads ~420MB into Python process</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Postgres Schema (must run before embed.py)</h2>
+  <pre>-- Run inside: docker compose exec postgres psql -U chipmate -d chipmate
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE chunks (
+    chunk_id    TEXT PRIMARY KEY,
+    component   TEXT NOT NULL,
+    section     TEXT,
+    page        INTEGER,
+    text        TEXT NOT NULL,
+    embedding   VECTOR(768),          -- nomic-embed-text dimension
+    fts_vector  TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', text)) STORED
+);
+
+-- ANN index: approximate nearest neighbor (much faster than exact scan)
+-- ivfflat with lists=100 is good for up to ~100k rows
+CREATE INDEX ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- GIN: inverted index for fast full-text search
+CREATE INDEX ON chunks USING GIN (fts_vector);</pre>
+
+  <h2>Run Commands</h2>
+  <div class="cmd"># Connect to Postgres and create schema:</div>
+  <div class="cmd">docker compose exec postgres psql -U chipmate -d chipmate</div>
+  <div class="cmd"># Embed and store chunks:</div>
+  <div class="cmd">python -m local.embed --input data/chunks/TPS62902.json</div>
+  <div class="cmd"># Test retrieval:</div>
+  <div class="cmd">python -m local.retrieve --query "operating voltage TPS62902"</div>
+  <div class="cmd">python -m local.retrieve --query "what replaces TPS62902" --top-k 5</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "I used hybrid retrieval: pgvector for semantic similarity and Postgres FTS for keyword matching, fused with Reciprocal Rank Fusion. RRF is more stable than a weighted sum because it only uses rank positions, not raw scores — cosine similarity and BM25 are on incompatible scales."
+  </div>
+
+</div>
+</body>
+</html>

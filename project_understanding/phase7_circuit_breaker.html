@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 7 — Circuit Breaker | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px; }
+  h2 { color: #f8fafc; font-size: 1rem; margin: 28px 0 12px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+  pre { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-size: 0.8rem; color: #94a3b8; overflow-x: auto; margin: 12px 0; }
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 16px; font-size: 0.85rem; color: #93c5fd; margin: 20px 0; }
+  .cmd { background: #0f172a; border: 1px solid #16a34a; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 0.82rem; color: #4ade80; margin: 8px 0; }
+  .states { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .state { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; text-align: center; }
+  .state.closed { border-color: #16a34a; }
+  .state.open { border-color: #ef4444; }
+  .state.halfopen { border-color: #f59e0b; }
+  .state h3 { font-size: 0.9rem; margin-bottom: 8px; }
+  .state.closed h3 { color: #4ade80; }
+  .state.open h3 { color: #f87171; }
+  .state.halfopen h3 { color: #fbbf24; }
+  .state p { font-size: 0.78rem; color: #94a3b8; margin: 0; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Back</a>
+  <h1>Phase 7 — Circuit Breaker</h1>
+</header>
+<div class="container">
+
+  <h2>Three States</h2>
+  <div class="states">
+    <div class="state closed">
+      <h3>CLOSED</h3>
+      <p>Normal. All calls pass through. Failures increment counter.</p>
+    </div>
+    <div class="state open">
+      <h3>OPEN</h3>
+      <p>Fault. All calls rejected immediately. No timeout wait. Opens at fail_max failures.</p>
+    </div>
+    <div class="state halfopen">
+      <h3>HALF_OPEN</h3>
+      <p>Testing. One call allowed. Success → CLOSED. Failure → OPEN.</p>
+    </div>
+  </div>
+
+  <h2>State Transitions</h2>
+  <pre>CLOSED ──(fail_max consecutive failures)──→ OPEN
+OPEN   ──(reset_timeout seconds elapsed)──→ HALF_OPEN
+HALF_OPEN ──(test call succeeds)──────────→ CLOSED
+HALF_OPEN ──(test call fails)─────────────→ OPEN
+
+ChipMate settings: fail_max=3, reset_timeout=30s</pre>
+
+  <h2>pybreaker vs Manual (alternative1)</h2>
+  <pre># pybreaker (resilience.py) — decorator pattern:
+ollama_breaker = CircuitBreaker(fail_max=3, reset_timeout=30)
+
+@ollama_breaker
+def _call_ollama(prompt, context):
+    # actual Ollama call
+    ...
+
+# Manual state machine (resilience_alternative1.py) — same logic, visible:
+class ManualCircuitBreaker:
+    def __init__(self, fail_max, reset_timeout):
+        self._state = CircuitState.CLOSED
+        self._failure_count = 0
+        self._last_failure_time = 0.0
+
+    @property
+    def state(self):
+        # Check OPEN -> HALF_OPEN transition on every access
+        if self._state == CircuitState.OPEN:
+            if time.time() - self._last_failure_time >= self.reset_timeout:
+                self._state = CircuitState.HALF_OPEN
+        return self._state</pre>
+
+  <h2>Why the Fallback Matters</h2>
+  <p>Without a fallback, an open circuit returns an exception to the user. ChipMate's fallback returns the retrieved context directly with a disclaimer — always available, no LLM required. In production this could be a secondary model or a cached answer.</p>
+
+  <h2>Demo: Triggering the Breaker</h2>
+  <div class="cmd"># Stop Ollama to simulate LLM failure:</div>
+  <div class="cmd">pkill ollama</div>
+  <div class="cmd"># Fire 4 calls — watch the breaker open on call 3:</div>
+  <div class="cmd">python -c "
+from local.resilience import call_llm_with_fallback
+for i in range(4):
+    answer, method = call_llm_with_fallback('What is voltage?', 'Context text')
+    print(f'Call {i+1}: method={method}  answer={answer[:50]}')
+"</div>
+  <div class="cmd"># Expected output:</div>
+  <div class="cmd"># Call 1: method=fallback (ConnectionError)
+# Call 2: method=fallback (ConnectionError)
+# Call 3: method=fallback (ConnectionError — breaker opens here)
+# Call 4: method=fallback (CircuitBreakerError — rejected instantly)</div>
+  <div class="cmd"># Restart Ollama:</div>
+  <div class="cmd">ollama serve &amp;</div>
+  <div class="cmd"># After 30s, breaker moves to HALF_OPEN and next call tests recovery</div>
+
+  <div class="note">
+    <strong>Interview talking point:</strong> "I wrapped the LLM call in a circuit breaker. After 3 consecutive failures, the breaker opens and rejects calls immediately without waiting for a timeout — that's the 'fail fast' property. After 30 seconds it moves to HALF_OPEN and allows one test call. I demonstrated this with real Bedrock ThrottlingExceptions on AWS."
+  </div>
+
+</div>
+</body>
+</html>

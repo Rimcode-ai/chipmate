@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 1 — ingest.py Walkthrough | ChipMate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.7; }
+
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+  header a { color: #3b82f6; text-decoration: none; font-size: 0.85rem; }
+  header h1 { font-size: 1.2rem; color: #f8fafc; }
+  header p { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 40px 80px; }
+
+  h2 { color: #f8fafc; font-size: 1.05rem; margin: 40px 0 14px; border-left: 3px solid #3b82f6; padding-left: 12px; }
+  h3 { color: #94a3b8; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 28px 0 10px; }
+  p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 12px; }
+
+  /* code blocks */
+  pre {
+    background: #0f172a;
+    border: 1px solid #1e3a5f;
+    border-left: 3px solid #3b82f6;
+    border-radius: 6px;
+    padding: 16px 20px;
+    font-size: 0.8rem;
+    color: #93c5fd;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    line-height: 1.65;
+  }
+  code { background: #1e293b; border: 1px solid #334155; border-radius: 3px; padding: 1px 5px; font-size: 0.8rem; color: #fbbf24; font-family: monospace; }
+
+  /* flow steps */
+  .flow { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 20px 24px; margin: 16px 0 28px; }
+  .flow-step { display: flex; gap: 16px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #1e293b; }
+  .flow-step:last-child { border-bottom: none; }
+  .step-num { background: #1d4ed8; color: #fff; font-size: 0.7rem; font-weight: 700; border-radius: 4px; padding: 2px 7px; min-width: 28px; text-align: center; margin-top: 2px; flex-shrink: 0; }
+  .step-where { color: #4ade80; font-family: monospace; font-size: 0.8rem; min-width: 240px; flex-shrink: 0; }
+  .step-what { color: #94a3b8; font-size: 0.82rem; }
+
+  /* dialogue */
+  .dialogue { margin: 16px 0 24px; display: flex; flex-direction: column; gap: 12px; }
+  .bubble { display: flex; gap: 12px; align-items: flex-start; }
+  .avatar { font-size: 1.3rem; min-width: 36px; text-align: center; margin-top: 2px; }
+  .bubble-body { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; flex: 1; }
+  .bubble-body.lead { border-color: #1d4ed8; background: #172554; }
+  .bubble-body.duck { border-color: #854d0e; background: #1c1008; }
+  .speaker { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .speaker.lead { color: #60a5fa; }
+  .speaker.duck { color: #fbbf24; }
+  .bubble-body p { color: #cbd5e1; font-size: 0.87rem; margin: 0; }
+  .bubble-body p + p { margin-top: 6px; }
+
+  /* callout boxes */
+  .note { background: #1e3a5f; border: 1px solid #1d4ed8; border-radius: 8px; padding: 14px 18px; font-size: 0.85rem; color: #93c5fd; margin: 16px 0; }
+  .warn { background: #431407; border: 1px solid #ef4444; border-radius: 8px; padding: 14px 18px; font-size: 0.85rem; color: #fca5a5; margin: 16px 0; }
+  .key  { background: #14532d; border: 1px solid #16a34a; border-radius: 8px; padding: 14px 18px; font-size: 0.85rem; color: #86efac; margin: 16px 0; }
+
+  /* memory anchor */
+  .memory { display: inline-block; background: #312e81; border: 1px solid #4f46e5; border-radius: 4px; font-size: 0.72rem; color: #a5b4fc; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 14px 0 20px; }
+  th { background: #1e293b; color: #94a3b8; padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }
+  td code { font-size: 0.78rem; }
+  tr:nth-child(even) td { background: #1e293b33; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <a href="index.html">← Back to index</a>
+    <h1>Phase 1 — ingest.py: Full Walkthrough</h1>
+    <p>Code flow first, then line-by-line following execution order. Lead Engineer → Ducky Duck teaching format.</p>
+  </div>
+</header>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Part 1 — The Execution Flow</h2>
+<!-- ═══════════════════════════════════════════════════════ -->
+
+<p>When you run this command:</p>
+<pre>python -m local.ingest --input data/datasheets/TPS62902.pdf</pre>
+
+<p>Python does NOT run the file top-to-bottom in the order it is written. Here is the actual execution sequence:</p>
+
+<div class="flow">
+  <div class="flow-step">
+    <span class="step-num">1</span>
+    <span class="step-where">Module load (top of file)</span>
+    <span class="step-what">Runs imports, creates constants, registers function definitions. Does NOT run any function bodies yet.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">2</span>
+    <span class="step-where">if __name__ == "__main__":</span>
+    <span class="step-what">This evaluates to True because you ran the file directly. Enters the block.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">3</span>
+    <span class="step-where">argparse reads the terminal</span>
+    <span class="step-what">Reads --input and --output flags. Sets args.input and args.output.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">4</span>
+    <span class="step-where">Path.mkdir()</span>
+    <span class="step-what">Creates data/chunks/ directory if it does not already exist.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">5</span>
+    <span class="step-where">ingest_pdf() called</span>
+    <span class="step-what">Execution jumps into the function. Opens the PDF. Starts page loop.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">6</span>
+    <span class="step-where">  pdfplumber.open()</span>
+    <span class="step-what">Opens the PDF file. pdf.pages is now a list of Page objects.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">7</span>
+    <span class="step-where">  for page_num, page in enumerate(...)</span>
+    <span class="step-what">Loops page 0, page 1, page 2 … until all pages are processed.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">8</span>
+    <span class="step-where">    chunk_text_by_section() called</span>
+    <span class="step-what">For each page: splits page text into lines, scans for section headers, flushes buffers into chunks.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">9</span>
+    <span class="step-where">      is_section_header() called</span>
+    <span class="step-what">Called for every non-blank line. Tests the line against the HEADER_RE regex. Returns True or False.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">10</span>
+    <span class="step-where">    extract_tables_as_chunks() called</span>
+    <span class="step-what">For each page: detects tables, converts rows to pipe-separated text, saves each table as one chunk.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">11</span>
+    <span class="step-where">    chunk tagging loop</span>
+    <span class="step-what">Every chunk from text + tables gets chunk_id, component, source_file added. Appended to all_chunks.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">12</span>
+    <span class="step-where">ingest_pdf() returns</span>
+    <span class="step-what">Returns all_chunks — one flat list of every chunk from every page of the whole PDF.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">13</span>
+    <span class="step-where">json.dump()</span>
+    <span class="step-what">Writes the chunk list to data/chunks/TPS62902.json.</span>
+  </div>
+  <div class="flow-step">
+    <span class="step-num">14</span>
+    <span class="step-where">print()</span>
+    <span class="step-what">Prints summary: total count and 3 sample chunks.</span>
+  </div>
+</div>
+
+<div class="key">
+  <strong>The one-sentence summary:</strong> The <code>__main__</code> block reads your terminal command and calls <code>ingest_pdf()</code>, which opens the PDF page by page — for each page it splits text into section-bounded chunks and tables into single-unit chunks, tags every chunk with a unique ID and metadata, collects them all, and when done the <code>__main__</code> block saves the result to a JSON file and prints a summary.
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2>Part 2 — Line-by-Line, Following Execution Order</h2>
+<!-- ═══════════════════════════════════════════════════════ -->
+
+
+<!-- ─── STEP 1 ─── -->
+<h2>Step 1 — Module Load: Imports &amp; Constants</h2>
+
+<pre>import re
+import json
+import argparse
+from pathlib import Path
+import pdfplumber</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Before your code does anything useful, Python goes shopping for tools. These five lines are the shopping list. Each import brings a toolkit into scope.</p>
+      <p><code>re</code> — the regular expression module. A regex is a pattern that describes what text looks like. We use it to recognise lines like <code>"ELECTRICAL CHARACTERISTICS"</code> as section headers.</p>
+      <p><code>json</code> — a serialiser. Converts Python objects into text that can be saved to a file and loaded back later.</p>
+      <p><code>argparse</code> — reads what the user typed in the terminal. Without it, <code>--input</code> and <code>--output</code> flags would not work.</p>
+      <p><code>from pathlib import Path</code> — <code>Path</code> is a smart wrapper around file paths. A plain string like <code>"data/chunks"</code> is dumb — it is just characters. A <code>Path</code> object knows how to extract the filename, create directories, join paths, and handle OS differences (Mac uses <code>/</code>, Windows uses <code>\</code>).</p>
+      <p><code>pdfplumber</code> — the only third-party library here. It cracks open a PDF and hands you the text and tables as Python objects. Without it you would be staring at binary gibberish.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>Why not just use a string for the file path? Why do I need <code>Path</code>?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Try joining a folder and a filename as plain strings: <code>"data/chunks" + "/" + "TPS62902.json"</code>. Works on Mac, silently breaks on Windows which uses backslash. <code>Path("data/chunks") / "TPS62902.json"</code> works everywhere because <code>Path</code> knows the OS. Also, <code>path.stem</code>, <code>path.name</code>, <code>path.mkdir()</code> are all built in — you stop writing utility code and focus on business logic.</p>
+    </div>
+  </div>
+</div>
+
+<pre>HEADER_RE = re.compile(r'^[A-Z][A-Z0-9\s\-/]{3,}$')
+MIN_CHUNK_CHARS = 50</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>These are module-level constants — created once on file load, alive for the entire program. Written in <code>UPPER_CASE</code> by convention to signal "do not mutate this inside a function."</p>
+      <p><code>re.compile()</code> pre-processes the regex pattern into a compiled object. If you wrote <code>re.match(pattern, line)</code> inside a loop, Python would re-parse the pattern string on every single iteration — potentially thousands of times. Compiling once here means the parsing cost is paid once.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Regex pattern decoded</h3>
+<table>
+  <tr><th>Part</th><th>Meaning</th><th>Example match</th></tr>
+  <tr><td><code>r'...'</code></td><td>Raw string — backslashes are literal, not Python escape chars</td><td>—</td></tr>
+  <tr><td><code>^</code></td><td>Must match at the START of the string</td><td>Nothing before the first character</td></tr>
+  <tr><td><code>[A-Z]</code></td><td>Exactly one uppercase letter</td><td><code>E</code> in <code>ELECTRICAL</code></td></tr>
+  <tr><td><code>[A-Z0-9\s\-/]</code></td><td>A character class: uppercase letter, digit, whitespace, hyphen, or slash</td><td><code>L</code>, <code> </code>, <code>-</code></td></tr>
+  <tr><td><code>{3,}</code></td><td>The character class above, repeated 3 or more times</td><td><code>ECTRICAL CHARACTERISTICS</code></td></tr>
+  <tr><td><code>$</code></td><td>Must match at the END of the string</td><td>Nothing after the last character</td></tr>
+</table>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>Why 50 characters for <code>MIN_CHUNK_CHARS</code>? Why not 30 or 100?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>It is a judgment call. When pdfplumber extracts text, it sometimes returns noise — a page number like <code>"3"</code>, a stray logo abbreviation like <code>"TI"</code>, a single value like <code>"3.3"</code>. None of those are useful chunks for retrieval. 30 lets in too much noise. 100 throws away short-but-valid entries like a one-line spec. 50 is a reasonable middle ground for datasheet content. In production you would tune it by inspecting what gets dropped. For now, 50 works.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 2 ─── -->
+<h2>Step 2 — <code>if __name__ == "__main__":</code></h2>
+
+<pre>if __name__ == "__main__":</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Every Python file has a built-in variable called <code>__name__</code>. When you run a file directly — <code>python -m local.ingest</code> — Python sets <code>__name__</code> to the string <code>"__main__"</code>. When another file imports this one — <code>from local.ingest import ingest_pdf</code> — Python sets <code>__name__</code> to <code>"local.ingest"</code> instead.</p>
+      <p>So this <code>if</code> block is a gate. It says: only run what is inside me if this file is the one being executed, not imported.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>What happens if I remove that check?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Then every time any file imports <code>ingest_pdf</code>, the entire script runs — it parses CLI arguments, tries to open a PDF, writes files. That would break every other module that imports from this file. The guard prevents that. This is the standard Python pattern for files that are both a library and a runnable script.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 3 ─── -->
+<h2>Step 3 — argparse reads the terminal command</h2>
+
+<pre>    parser = argparse.ArgumentParser(description="Structure-aware PDF chunker")
+    parser.add_argument("--input", required=True, help="Path to PDF file")
+    parser.add_argument("--output", default="data/chunks", help="Output directory for JSON")
+    args = parser.parse_args()</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>argparse reads <code>sys.argv</code> — the raw list of strings Python captures from the terminal. If you typed <code>python -m local.ingest --input data/datasheets/TPS62902.pdf</code>, then <code>sys.argv</code> is <code>["local/ingest.py", "--input", "data/datasheets/TPS62902.pdf"]</code>.</p>
+      <p><code>add_argument("--input", required=True)</code> — declares that <code>--input</code> is mandatory. If missing, argparse errors out with a helpful message before your code even runs.</p>
+      <p><code>default="data/chunks"</code> — if <code>--output</code> is not provided, use this value automatically.</p>
+      <p><code>parse_args()</code> reads <code>sys.argv</code> and returns a namespace object. After this line: <code>args.input → "data/datasheets/TPS62902.pdf"</code> and <code>args.output → "data/chunks"</code>.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>What if someone runs the script without <code>--input</code>?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>argparse catches it before your code runs and prints: <code>error: the following arguments are required: --input</code>. That is why <code>required=True</code> exists — a clear error message instead of a crash deep inside a function.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 4 ─── -->
+<h2>Step 4 — create the output directory</h2>
+
+<pre>    Path(args.output).mkdir(parents=True, exist_ok=True)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>Path(args.output)</code> wraps the string <code>"data/chunks"</code> as a Path object. <code>.mkdir()</code> creates the directory.</p>
+      <p><code>parents=True</code> — if <code>data/</code> does not exist either, create it too. Without this, <code>mkdir</code> errors if any parent folder is missing.</p>
+      <p><code>exist_ok=True</code> — if the directory already exists, do nothing instead of raising an error. Without this, running the script twice would crash on the second run.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 5 ─── -->
+<h2>Step 5 — <code>ingest_pdf()</code> is called</h2>
+
+<pre>    chunks = ingest_pdf(args.input)</pre>
+
+<p>Execution jumps into the function. Everything below is happening inside <code>ingest_pdf()</code>.</p>
+
+<pre>def ingest_pdf(pdf_path: str) -> list[dict]:
+    path = Path(pdf_path)
+    component = path.stem.upper()
+    all_chunks = []
+    current_section = "GENERAL"
+    chunk_index = 0</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>path.stem</code> extracts the filename without its extension. <code>Path("data/datasheets/TPS62902.pdf").stem</code> gives <code>"TPS62902"</code>. <code>.upper()</code> normalises it in case someone named their file <code>tps62902.pdf</code>.</p>
+      <p>Three variables initialised before the loop:</p>
+      <p><code>all_chunks</code> — the master list. Every chunk from every page of the entire PDF ends up here. Returned at the end.</p>
+      <p><code>current_section</code> — tracks which section we are inside. Starts as <code>"GENERAL"</code> because no section header has been seen yet. Updates every time a header is found, and crucially — carries across page boundaries.</p>
+      <p><code>chunk_index</code> — a simple integer counter. Increments by 1 for every chunk saved. Used to generate unique IDs like <code>TPS62902_p003_c012</code>.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>Why does <code>current_section</code> need to carry across page boundaries?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>A section in a real datasheet can span multiple pages. "Electrical Characteristics" might start on page 4 and continue on page 5 with no header at the top of page 5. If you reset <code>current_section</code> to <code>"GENERAL"</code> at the start of every page, all the content on page 5 would be wrongly tagged as <code>"GENERAL"</code>. By carrying the last seen section forward, chunks on page 5 correctly stay tagged as <code>"ELECTRICAL CHARACTERISTICS"</code>.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 6 ─── -->
+<h2>Step 6 — open the PDF</h2>
+
+<pre>    with pdfplumber.open(pdf_path) as pdf:</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>with ... as pdf:</code> is a context manager. It opens the file, gives you access to it via the name <code>pdf</code>, and guarantees the file is closed when the indented block exits — whether that exit is normal or due to an exception. It is the safe alternative to manually calling <code>pdf.close()</code>.</p>
+      <p>Think of it like a library checkout desk. <code>with</code> checks the book out. When the indented block ends, the book is automatically returned — even if you tripped and fell on the way out.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 7 ─── -->
+<h2>Step 7 — loop over pages</h2>
+
+<pre>        for page_num, page in enumerate(pdf.pages):</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>pdf.pages</code> is a list of pdfplumber <code>Page</code> objects — one per page in the PDF.</p>
+      <p><code>enumerate()</code> wraps any iterable and yields <code>(index, value)</code> pairs. First iteration: <code>page_num = 0</code>, <code>page = &lt;Page 0&gt;</code>. Second: <code>page_num = 1</code>, <code>page = &lt;Page 1&gt;</code>. And so on.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>Why not just <code>for page in pdf.pages</code>?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Because you need the page number to tag each chunk with where it came from. <code>for page in pdf.pages</code> gives you the page object but no counter. <code>enumerate()</code> gives you both at once. Never write a separate <code>page_num = 0</code> counter that you increment manually — <code>enumerate()</code> is the right tool.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 8 ─── -->
+<h2>Step 8 — <code>chunk_text_by_section()</code></h2>
+
+<pre>            page_text = page.extract_text() or ""
+            text_chunks, current_section = chunk_text_by_section(page_text, page_num, current_section)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>page.extract_text()</code> returns all the text on this page as one big string with <code>\n</code> between lines. On an image-only page it returns <code>None</code>. <code>or ""</code> converts <code>None</code> to an empty string — safe to pass into the function either way.</p>
+      <p><code>text_chunks, current_section = ...</code> is tuple unpacking. The function returns two values packaged as a tuple: <code>(list_of_chunks, section_name)</code>. Python assigns each to the corresponding variable on the left. The updated <code>current_section</code> will be passed into the next page's call.</p>
+    </div>
+  </div>
+</div>
+
+<p>Now execution jumps into <code>chunk_text_by_section()</code>:</p>
+
+<pre>def chunk_text_by_section(text: str, page_num: int, current_section: str) -> tuple[list[dict], str]:
+    lines = text.split("\n")
+    chunks = []
+    buffer = []</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>text.split("\n")</code> cuts the page string at every newline and returns a list. <code>"Line one\nLine two\nLine three"</code> becomes <code>["Line one", "Line two", "Line three"]</code>.</p>
+      <p><code>chunks</code> collects finished chunk dicts — the final output of this function. <code>buffer</code> is a temporary holding area. As we scan lines one by one, we accumulate them here. When we hit a section header, we flush the buffer into a chunk and reset it. Think of buffer as a notepad — you write on it until a new section begins, then you tear off the sheet and file it.</p>
+    </div>
+  </div>
+</div>
+
+<pre>    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>.strip()</code> removes leading and trailing whitespace. <code>"   Voltage 3.3V   "</code> becomes <code>"Voltage 3.3V"</code>.</p>
+      <p><code>if not stripped: continue</code> — after stripping, if the result is an empty string, <code>not stripped</code> is <code>True</code>. <code>continue</code> immediately skips to the next loop iteration. Blank lines carry no content — discard them.</p>
+    </div>
+  </div>
+</div>
+
+<pre>        if is_section_header(stripped) and buffer:
+            body = " ".join(buffer).strip()
+            if len(body) >= MIN_CHUNK_CHARS:
+                chunks.append({"text": body, "section": current_section, "page": page_num})
+            current_section = stripped
+            buffer = []
+        else:
+            buffer.append(stripped)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>The condition has two parts joined by <code>and</code> — both must be true:</p>
+      <p>1. <code>is_section_header(stripped)</code> — the current line matches the all-caps regex.</p>
+      <p>2. <code>buffer</code> — the buffer is non-empty. A non-empty list is truthy in Python. An empty list is falsy. This prevents saving an empty chunk when two headers appear back to back.</p>
+      <p>If both are true: join the buffer into one string with spaces between each line, check it is at least 50 characters, save it as a chunk dict with the current section name, then update <code>current_section</code> to the new header and reset <code>buffer</code>.</p>
+      <p>Notice: the chunk is tagged with the section that was active <em>while the buffer was being filled</em>, not the new header. The new header belongs to the next chunk.</p>
+      <p>If the line is not a header: just append it to the buffer and keep going.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>What if the very first line on a page is a section header? The buffer is empty, so the first condition fails. What happens?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>It falls into the <code>else</code> branch — <code>buffer.append(stripped)</code>. The header line gets added to the buffer as if it were regular content. That means the header text itself ends up in the next chunk's body.</p>
+      <p>Is that a problem? Not really for our use case — the section name is tracked via <code>current_section</code>, and the header text appearing in the body too is harmless. If it bothered you, you could add a special case: if it is a header and the buffer is empty, just update <code>current_section</code> and do not add to the buffer. That would be a clean improvement.</p>
+    </div>
+  </div>
+</div>
+
+<pre>    # flush remaining buffer
+    if buffer:
+        body = " ".join(buffer).strip()
+        if len(body) >= MIN_CHUNK_CHARS:
+            chunks.append({"text": body, "section": current_section, "page": page_num})
+
+    return chunks, current_section</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>The flush-on-header logic inside the loop only triggers when it sees a new header. The last section on the page never gets a header after it — the page just ends. So those lines are still sitting in the buffer when the loop finishes. This block handles that: if the buffer is non-empty after the loop, flush it as one final chunk.</p>
+      <p><code>return chunks, current_section</code> — returns two values. Python automatically packages multiple return values into a tuple. The caller unpacks them with <code>text_chunks, current_section = ...</code>.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 9 ─── -->
+<h2>Step 9 — <code>is_section_header()</code> (called from inside the loop)</h2>
+
+<pre>def is_section_header(line: str) -> bool:
+    return bool(HEADER_RE.match(line.strip()))</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>HEADER_RE.match(line.strip())</code> — tries to match the compiled regex against the string. Returns a match object if it matches, <code>None</code> if it does not.</p>
+      <p><code>bool(...)</code> — converts the result to <code>True</code> or <code>False</code>. A match object is truthy. <code>None</code> is falsy. So: match → <code>True</code>, no match → <code>False</code>.</p>
+      <p>Notice <code>.strip()</code> is called again here even though the caller already stripped the line. That is defensive programming — the function does not trust that its input is already clean. Harmless redundancy for safety.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>Why does this function exist at all? Why not just call <code>HEADER_RE.match()</code> directly in the if-statement?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Readability. <code>if is_section_header(stripped) and buffer:</code> reads like English. <code>if bool(HEADER_RE.match(stripped.strip())) and buffer:</code> makes you stop and decode it. Functions with intention-revealing names are one of the highest-value habits you can build as an engineer. The code tells you what it is doing, not how.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 10 ─── -->
+<h2>Step 10 — <code>extract_tables_as_chunks()</code></h2>
+
+<pre>def extract_tables_as_chunks(page, page_num: int, current_section: str) -> list[dict]:
+    table_chunks = []
+    for table in page.extract_tables() or []:</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>page.extract_tables()</code> detects and returns all tables on the page. Each table is a list of rows. Each row is a list of cell values. Returns <code>None</code> if there are no tables on the page. <code>or []</code> converts <code>None</code> to an empty list so the loop has nothing to iterate over and does not crash.</p>
+    </div>
+  </div>
+</div>
+
+<pre>        rows = []
+        for row in table:
+            row_text = " | ".join(str(cell or "").strip() for cell in row)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>For each row, clean every cell and join them with a pipe separator. Three things on one line:</p>
+      <p><code>cell or ""</code> — if a cell is <code>None</code> (an empty table cell), replace it with an empty string. <code>None or ""</code> evaluates to <code>""</code>.</p>
+      <p><code>str(...).strip()</code> — convert to string and remove whitespace.</p>
+      <p><code>" | ".join(...)</code> — join the cleaned cell values with <code> | </code> between them. A row like <code>["Symbol", "Min", "Max"]</code> becomes <code>"Symbol | Min | Max"</code>.</p>
+      <p>The <code>for cell in row</code> inside the <code>join()</code> is a generator expression — a compact loop that produces values on the fly without building an intermediate list.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>What is the difference between a generator expression and a list comprehension?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>List comprehension: <code>[str(cell or "").strip() for cell in row]</code> — builds the entire list in memory first, then passes it to <code>join()</code>.</p>
+      <p>Generator expression: <code>str(cell or "").strip() for cell in row</code> (no square brackets) — produces one value at a time as <code>join()</code> requests them. No intermediate list is created.</p>
+      <p>For <code>join()</code>, the generator is preferred because <code>join()</code> only needs to iterate once — no need to store the whole list. Memory-efficient. For a small table row it makes no practical difference, but it is the idiomatic Python choice.</p>
+    </div>
+  </div>
+</div>
+
+<pre>            if row_text.replace("|", "").strip():
+                rows.append(row_text)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>replace("|", "")</code> removes all pipe characters. <code>.strip()</code> removes whitespace. If the result is a non-empty string, the row had real content. If nothing is left, every cell in the row was empty — skip it. This filters out ghost rows that pdfplumber sometimes detects around borders and formatting artefacts.</p>
+    </div>
+  </div>
+</div>
+
+<pre>        if rows:
+            text = "\n".join(rows)
+            if len(text) >= MIN_CHUNK_CHARS:
+                table_chunks.append({"text": text, "section": current_section, "page": page_num})
+    return table_chunks</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>If any rows survived the filter, join them with newlines to form the complete table as a single text block. Apply the 50-char minimum. If it passes, save as a chunk. The entire table is one chunk — not one chunk per row. This is the key design decision: tables must not be split.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 11 ─── -->
+<h2>Step 11 — tagging and collecting all chunks</h2>
+
+<pre>            for chunk in text_chunks + table_chunks:
+                chunk["chunk_id"] = f"{component}_p{page_num:03d}_c{chunk_index:03d}"
+                chunk["component"] = component
+                chunk["source_file"] = path.name
+                chunk_index += 1
+                all_chunks.append(chunk)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>text_chunks + table_chunks</code> concatenates two lists into one. Both are just Python lists — <code>+</code> joins them.</p>
+      <p><code>chunk["chunk_id"] = f"..."</code> — adds a new key to the dict. The chunk was created inside the sub-functions with only <code>text</code>, <code>section</code>, and <code>page</code>. Here we bolt on three more fields.</p>
+      <p><code>f"{component}_p{page_num:03d}_c{chunk_index:03d}"</code> — the <code>:03d</code> format spec means: integer, minimum 3 digits, zero-padded. Page 3 → <code>003</code>. This ensures IDs sort correctly as strings — <code>_p003_</code> comes before <code>_p010_</code> alphabetically. Without it, <code>"_p3_"</code> would sort after <code>"_p10_"</code> because string sorting is character-by-character.</p>
+      <p><code>chunk_index += 1</code> is shorthand for <code>chunk_index = chunk_index + 1</code>. Increments the counter so every chunk gets a unique number.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 12 ─── -->
+<h2>Step 12 — <code>ingest_pdf()</code> returns</h2>
+
+<pre>    return all_chunks</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>The page loop is done. <code>all_chunks</code> contains every chunk from every page. Execution returns to the line in <code>__main__</code> that called this function: <code>chunks = ingest_pdf(args.input)</code>. The variable <code>chunks</code> now holds the full list.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 13 ─── -->
+<h2>Step 13 — write JSON to disk</h2>
+
+<pre>    component = Path(args.input).stem.upper()
+    out_path = Path(args.output) / f"{component}.json"
+    with open(out_path, "w") as f:
+        json.dump(chunks, f, indent=2)</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>Path(args.output) / f"{component}.json"</code> — the <code>/</code> operator on Path objects joins a directory and a filename. <code>Path("data/chunks") / "TPS62902.json"</code> → <code>Path("data/chunks/TPS62902.json")</code>. Safer than string concatenation because it handles OS path separators.</p>
+      <p><code>open(out_path, "w")</code> — opens the file for writing. <code>"w"</code> means write mode: creates the file if it does not exist, overwrites it if it does.</p>
+      <p><code>json.dump(chunks, f, indent=2)</code> — serialises the Python list of dicts into JSON text and writes it directly to the file object <code>f</code>. <code>indent=2</code> produces human-readable output with 2-space indentation. Without it, the entire JSON would be one compressed line impossible to read.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── STEP 14 ─── -->
+<h2>Step 14 — print summary</h2>
+
+<pre>    print(f"Wrote {len(chunks)} chunks -> {out_path}")
+    print("Sample chunks:")
+    for c in chunks[:3]:
+        print(f"  {c['chunk_id']}  section={c['section']!r}  page={c['page']}  len={len(c['text'])}")</pre>
+
+<div class="dialogue">
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p><code>chunks[:3]</code> — slice notation. Takes elements at index 0, 1, 2. If fewer than 3 chunks exist, returns however many there are without an error.</p>
+      <p><code>{c['section']!r}</code> — the <code>!r</code> conversion flag calls <code>repr()</code> on the value before inserting it. For a string, <code>repr()</code> wraps it in quotes: <code>GENERAL</code> prints as <code>'GENERAL'</code>. This makes it visually obvious you are printing a string, not a number or a boolean.</p>
+      <p><code>len(c['text'])</code> — number of characters in the chunk text. Lets you quickly verify that chunks are a reasonable size and not suspiciously short.</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">🐥</div>
+    <div class="bubble-body duck">
+      <div class="speaker duck">Ducky</div>
+      <p>I think I understand the whole thing now. But why did we bother separating text chunks and table chunks into two functions? Could we have done it in one?</p>
+    </div>
+  </div>
+  <div class="bubble">
+    <div class="avatar">👩‍💻</div>
+    <div class="bubble-body lead">
+      <div class="speaker lead">Lead</div>
+      <p>Yes, technically we could have merged them. But they are doing fundamentally different things. Text chunking is about splitting a linear stream of lines by section headers. Table chunking is about taking a 2D structure (rows × cells) and flattening it into one text block. Merging them into one function would have made it harder to understand, test, and change each independently.</p>
+      <p>The rule: a function should do one thing. When you find yourself writing two distinct algorithms in one function, that is usually a signal to split. Here the split is justified — they work on different data structures (string vs. table object) and have different logic. You can test them in isolation. You can swap one without touching the other.</p>
+      <p>That is one of the things that separates senior from junior: junior asks "does this work?" Senior asks "can I understand, test, and change each part without touching the rest?"</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ─── FINAL ─── -->
+<h2>The Whole Picture</h2>
+
+<div class="key">
+  <strong>One paragraph:</strong> You run the command, argparse reads your flags, the output directory is created, <code>ingest_pdf()</code> opens the PDF and loops over every page — for each page it calls <code>chunk_text_by_section()</code> which scans lines one by one and flushes section-bounded text into chunk dicts when a new header is found, and calls <code>extract_tables_as_chunks()</code> which converts every table into a single pipe-separated text block, then every chunk from both functions gets a unique ID and three metadata fields bolted on and is added to the master list — when all pages are done the master list is serialised to JSON and written to disk.
+</div>
+
+<div class="note" style="margin-top: 24px;">
+  <strong>What to type in IntelliJ next:</strong> Open <code>local/ingest.py</code> and type this code from scratch. Start with the imports, then the constants, then each function in the order they appear. Run it with a real PDF — <code>python -m local.ingest --input data/datasheets/TPS62902.pdf</code> — and inspect the JSON output. That is when it stops being abstract.
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,178 @@
+[
+  {
+    "id": "tc-001",
+    "query": "What is the input voltage range of TPS62902?",
+    "intent": "spec_lookup",
+    "expected_value": "3",
+    "expected_unit": "V",
+    "expected_source_contains": "Input Voltage",
+    "notes": "TPS62902 operates from 3V to 17V. Any extraction of 3 V satisfies this case."
+  },
+  {
+    "id": "tc-002",
+    "query": "What replaces the TPS62902?",
+    "intent": "relationship_lookup",
+    "expected_graph_result": ["TPS62903"],
+    "expected_source_contains": null,
+    "notes": "Graph traversal test — REPLACED_BY edge must be followed."
+  },
+  {
+    "id": "tc-003",
+    "query": "What is the output current of TPS62902?",
+    "intent": "spec_lookup",
+    "expected_value": "2",
+    "expected_unit": "A",
+    "expected_source_contains": "Output Current",
+    "notes": "TPS62902 rated at 2A output."
+  },
+  {
+    "id": "tc-004",
+    "query": "What is the switching frequency of TPS62902?",
+    "intent": "spec_lookup",
+    "expected_value": "2.2",
+    "expected_unit": "MHz",
+    "expected_source_contains": "Switching Frequency",
+    "notes": "Default switching frequency is 2.2 MHz."
+  },
+  {
+    "id": "tc-005",
+    "query": "Is the LM358 pin compatible with TLV2372?",
+    "intent": "relationship_lookup",
+    "expected_graph_result": ["TLV2372"],
+    "expected_source_contains": null,
+    "notes": "PIN_COMPATIBLE edge traversal test."
+  },
+  {
+    "id": "tc-006",
+    "query": "What is the supply voltage range of LM358?",
+    "intent": "spec_lookup",
+    "expected_value": "3",
+    "expected_unit": "V",
+    "expected_source_contains": "Supply Voltage",
+    "notes": "LM358 single supply: 3V to 32V."
+  },
+  {
+    "id": "tc-007",
+    "query": "How many channels does LM358 have?",
+    "intent": "spec_lookup",
+    "expected_value": "2",
+    "expected_unit": null,
+    "expected_source_contains": "dual",
+    "notes": "LM358 is a dual op-amp — 2 channels."
+  },
+  {
+    "id": "tc-008",
+    "query": "What is the resolution of ADS1115?",
+    "intent": "spec_lookup",
+    "expected_value": "16",
+    "expected_unit": "bit",
+    "expected_source_contains": "resolution",
+    "notes": "ADS1115 is a 16-bit ADC."
+  },
+  {
+    "id": "tc-009",
+    "query": "What interface does ADS1115 use?",
+    "intent": "spec_lookup",
+    "expected_value": "I2C",
+    "expected_unit": null,
+    "expected_source_contains": "I2C",
+    "notes": "ADS1115 communicates over I2C."
+  },
+  {
+    "id": "tc-010",
+    "query": "What is the maximum current measured by INA219?",
+    "intent": "spec_lookup",
+    "expected_value": "3.2",
+    "expected_unit": "A",
+    "expected_source_contains": "Current",
+    "notes": "INA219 default range is ±3.2A."
+  },
+  {
+    "id": "tc-011",
+    "query": "What replaces the LM358?",
+    "intent": "relationship_lookup",
+    "expected_graph_result": ["TLV2372"],
+    "expected_source_contains": null,
+    "notes": "REPLACED_BY edge from LM358 to TLV2372."
+  },
+  {
+    "id": "tc-012",
+    "query": "What is the quiescent current of TPS62902?",
+    "intent": "spec_lookup",
+    "expected_value": "60",
+    "expected_unit": "uA",
+    "expected_source_contains": "Quiescent",
+    "notes": "60µA quiescent current — tests micro-amp unit extraction."
+  },
+  {
+    "id": "tc-013",
+    "query": "What is the efficiency of TPS62902?",
+    "intent": "spec_lookup",
+    "expected_value": "90",
+    "expected_unit": "%",
+    "expected_source_contains": "efficiency",
+    "notes": "TPS62902 achieves >90% efficiency — tests percentage extraction."
+  },
+  {
+    "id": "tc-014",
+    "query": "What is the package of LM358?",
+    "intent": "spec_lookup",
+    "expected_value": "SOIC",
+    "expected_unit": null,
+    "expected_source_contains": "package",
+    "notes": "LM358 available in SOIC-8 package. Tests non-numeric extraction."
+  },
+  {
+    "id": "tc-015",
+    "query": "What is the voltage regulation accuracy of ADS1115?",
+    "intent": "general",
+    "expected_value": null,
+    "expected_unit": null,
+    "expected_source_contains": null,
+    "notes": "Edge case — ADS1115 is an ADC, not a regulator. Expect low confidence or escalation to human approval."
+  },
+  {
+    "id": "tc-016",
+    "query": "What component can replace the TPS62902 in a 5V system?",
+    "intent": "relationship_lookup",
+    "expected_graph_result": ["TPS62903"],
+    "expected_source_contains": null,
+    "notes": "Relationship query with extra context in the question — router must still classify as relationship_lookup."
+  },
+  {
+    "id": "tc-017",
+    "query": "What is the operating temperature range of INA219?",
+    "intent": "spec_lookup",
+    "expected_value": "-40",
+    "expected_unit": "C",
+    "expected_source_contains": "Temperature",
+    "notes": "Tests negative number and temperature unit extraction."
+  },
+  {
+    "id": "tc-018",
+    "query": "Does TPS62902 support power save mode?",
+    "intent": "spec_lookup",
+    "expected_value": null,
+    "expected_unit": null,
+    "expected_source_contains": "power save",
+    "notes": "Boolean feature question — verify source contains the phrase, no numeric extraction."
+  },
+  {
+    "id": "tc-019",
+    "query": "What is the pin count of LM358?",
+    "intent": "spec_lookup",
+    "expected_value": "8",
+    "expected_unit": null,
+    "expected_source_contains": "pin",
+    "notes": "LM358 DIP-8/SOIC-8 — 8 pins."
+  },
+  {
+    "id": "tc-020",
+    "query": "What is the data rate of ADS1115?",
+    "intent": "spec_lookup",
+    "expected_value": "860",
+    "expected_unit": "SPS",
+    "expected_source_contains": "samples per second",
+    "notes": "Max data rate 860 SPS — tests samples-per-second unit."
+  }
+]
